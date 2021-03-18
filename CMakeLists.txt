@@ -1,28 +1,28 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5)
 project(stage_ros)
 
-find_package(catkin REQUIRED
-  COMPONENTS
-    geometry_msgs
-    nav_msgs
-    roscpp
-    sensor_msgs
-    std_msgs
-    std_srvs
-    tf
-)
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS system thread)
 
-find_package(stage REQUIRED)
-
-include_directories(
-  ${catkin_INCLUDE_DIRS}
-  ${Boost_INCLUDE_DIRS}
-  ${STAGE_INCLUDE_DIRS}
-)
-
-catkin_package()
+ament_package()
 
 # Declare a cpp executable
 add_executable(stageros src/stageros.cpp)
@@ -30,37 +30,41 @@ set(${PROJECT_NAME}_extra_libs "")
 if(UNIX AND NOT APPLE)
   set(${PROJECT_NAME}_extra_libs dl)
 endif()
+ament_target_dependencies(stageros
+  rclcpp
+  std_msgs
+  sensor_msgs
+  nav_msgs
+  std_srvs
+  tf2
+  tf2_geometry_msgs
+  tf2_ros
+)
+target_include_directories(stageros PRIVATE
+  ${Boost_INCLUDE_DIRS}
+  ${STAGE_INCLUDE_DIRS}
+  /opt/ros/noetic/include/Stage-4.3
+)
 target_link_libraries(stageros
-  ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
   ${STAGE_LIBRARIES}
+  -L/usr/local/lib64 -L/opt/ros/noetic/lib -lstage  -lfltk_images -lfltk_forms -lfltk_gl -lGL -lfltk -lSM -lICE -lX11 -lXext -lm -lGLU -lGL -lGLU -lGL
   ${${PROJECT_NAME}_extra_libs}
 )
-if(catkin_EXPORTED_TARGETS)
-  add_dependencies(stageros ${catkin_EXPORTED_TARGETS})
-endif()
 
 ## Install
 
 install(PROGRAMS scripts/upgrade-world.sh
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+  DESTINATION lib/${PROJECT_NAME})
 
 install(TARGETS stageros
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY rviz
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+  DESTINATION share/${PROJECT_NAME})
 
 install(DIRECTORY world
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
-
-## Tests
-
-if(CATKIN_ENABLE_TESTING)
-  find_package(rostest REQUIRED)
-  add_rostest(test/hztest.xml)
-  add_rostest(test/intensity_test.xml)
-endif()
+  DESTINATION share/${PROJECT_NAME})
