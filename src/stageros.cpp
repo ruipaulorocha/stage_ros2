@@ -41,7 +41,7 @@
 // roscpp
 #include "rclcpp/rclcpp.hpp"
 #include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
+#include <thread>
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/image_encodings.hpp>
@@ -65,14 +65,38 @@
 #define BASE_POSE_GROUND_TRUTH "base_pose_ground_truth"
 #define CMD_VEL "cmd_vel"
 
+// helper functions
+geometry_msgs::msg::TransformStamped create_transform_stamped(const tf2::Transform &in, const rclcpp::Time &timestamp, const std::string &frame_id, const std::string &child_frame_id)
+{
+    geometry_msgs::msg::TransformStamped out;
+    out.header.stamp = timestamp;
+    out.header.frame_id = frame_id;
+    out.child_frame_id = child_frame_id;
+    out.transform.translation.x = in.getOrigin().getX();
+    out.transform.translation.y = in.getOrigin().getY();
+    out.transform.translation.z = in.getOrigin().getZ();
+    out.transform.rotation.w = in.getRotation().getW();
+    out.transform.rotation.x = in.getRotation().getX();
+    out.transform.rotation.y = in.getRotation().getY();
+    out.transform.rotation.z = in.getRotation().getZ();
+    return out;
+}
+
+auto createQuaternionMsgFromYaw(double yaw)
+{
+  tf2::Quaternion q;
+  q.setRPY(0, 0, yaw);
+  return tf2::toMsg(q);
+}
+
 // Our node
 class StageNode
 {
-private:
-
+public:
     // roscpp-related bookkeeping
-    rclcpp::Node::SharedPtr n_;
+    rclcpp::Node::SharedPtr n_ = rclcpp::Node::make_shared("stage_ros");
 
+private:
     // A mutex to lock access to fields that are used in message callbacks
     boost::mutex msg_lock;
 
@@ -165,7 +189,7 @@ public:
     void cmdvelReceived(int idx, const geometry_msgs::msg::Twist::SharedPtr msg);
 
     // Service callback for soft reset
-    bool cb_reset_srv(std_srvs::srv::Empty::Request& request, std_srvs::srv::Empty::Response& response);
+    bool cb_reset_srv(const std_srvs::srv::Empty::Request::SharedPtr request, std_srvs::srv::Empty::Response::SharedPtr response);
 
     // The main simulator object
     Stg::World* world;
@@ -251,7 +275,7 @@ StageNode::ghfunc(Stg::Model* mod, StageNode* node)
 
 
 bool
-StageNode::cb_reset_srv(std_srvs::srv::Empty::Request& request, std_srvs::srv::Empty::Response& response)
+StageNode::cb_reset_srv(const std_srvs::srv::Empty::Request::SharedPtr request, std_srvs::srv::Empty::Response::SharedPtr response)
 {
   RCLCPP_INFO(this->n_->get_logger(), "Resetting stage!");
   for (size_t r = 0; r < this->positionmodels.size(); r++) {
@@ -279,7 +303,7 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
     this->sim_time = rclcpp::Time(0, 0);
     this->base_last_cmd = rclcpp::Time(0, 0);
     double t;
-    rclcpp::Node::SharedPtr localn = rclcpp::Node::make_shared("~");
+    rclcpp::Node::SharedPtr localn = rclcpp::Node::make_shared("_");
     if(!localn->get_parameter("base_watchdog_timeout", t))
         t = 0.2;
     this->base_watchdog_timeout = rclcpp::Duration(t*1e9);
@@ -324,7 +348,7 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
 int
 StageNode::SubscribeModels()
 {
-    n_->set_parameter(rclcpp::Parameter("/use_sim_time", true));
+    n_->set_parameter(rclcpp::Parameter("use_sim_time", true));
 
     for (size_t r = 0; r < this->positionmodels.size(); r++)
     {
@@ -395,7 +419,7 @@ StageNode::SubscribeModels()
     clock_pub_ = n_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
 
     // advertising reset service
-    reset_srv_ = n_->create_service<std_srvs::srv::Empty>("reset_positions", &StageNode::cb_reset_srv);
+    reset_srv_ = n_->create_service<std_srvs::srv::Empty>("reset_positions", [this](const std_srvs::srv::Empty::Request::SharedPtr request, std_srvs::srv::Empty::Response::SharedPtr response){this->cb_reset_srv(request, response);});
 
     return(0);
 }
@@ -493,17 +517,17 @@ StageNode::WorldCallback()
             tf2::Transform txLaser =  tf2::Transform(laserQ, tf2::Vector3(lp.x, lp.y, robotmodel->positionmodel->GetGeom().size.z + lp.z));
 
             if (robotmodel->lasermodels.size() > 1)
-                tf.sendTransform(tf::StampedTransform(txLaser, sim_time,
+                tf.sendTransform(create_transform_stamped(txLaser, sim_time,
                                                       mapName("base_link", r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
                                                       mapName("base_laser_link", r, s, static_cast<Stg::Model*>(robotmodel->positionmodel))));
             else
-                tf.sendTransform(tf::StampedTransform(txLaser, sim_time,
+                tf.sendTransform(create_transform_stamped(txLaser, sim_time,
                                                       mapName("base_link", r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
                                                       mapName("base_laser_link", r, static_cast<Stg::Model*>(robotmodel->positionmodel))));
         }
 
         //the position of the robot
-        tf.sendTransform(tf::StampedTransform(tf::Transform::getIdentity(),
+        tf.sendTransform(create_transform_stamped(tf2::Transform::getIdentity(),
                                               sim_time,
                                               mapName("base_footprint", r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
                                               mapName("base_link", r, static_cast<Stg::Model*>(robotmodel->positionmodel))));
@@ -513,7 +537,7 @@ StageNode::WorldCallback()
         nav_msgs::msg::Odometry odom_msg;
         odom_msg.pose.pose.position.x = robotmodel->positionmodel->est_pose.x;
         odom_msg.pose.pose.position.y = robotmodel->positionmodel->est_pose.y;
-        odom_msg.pose.pose.orientation = tf::createQuaternionMsgFromYaw(robotmodel->positionmodel->est_pose.a);
+        odom_msg.pose.pose.orientation = createQuaternionMsgFromYaw(robotmodel->positionmodel->est_pose.a);
         Stg::Velocity v = robotmodel->positionmodel->GetVelocity();
         odom_msg.twist.twist.linear.x = v.x;
         odom_msg.twist.twist.linear.y = v.y;
@@ -528,8 +552,13 @@ StageNode::WorldCallback()
         robotmodel->odom_pub->publish(odom_msg);
 
         // broadcast odometry transform
-        tf2::Quaternion odomQ;
+        tf2::Quaternion odomQ = tf2::Quaternion(
+            odom_msg.pose.pose.orientation.x,
+            odom_msg.pose.pose.orientation.y,
+            odom_msg.pose.pose.orientation.z,
+            odom_msg.pose.pose.orientation.w);
         tf2::Transform txOdom(odomQ, tf2::Vector3(odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y, 0.0));
+        tf.sendTransform(create_transform_stamped(txOdom, sim_time,
                                               mapName("odom", r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
                                               mapName("base_footprint", r, static_cast<Stg::Model*>(robotmodel->positionmodel))));
 
@@ -684,11 +713,11 @@ StageNode::WorldCallback()
                 tf2::Transform tr =  tf2::Transform(Q, tf2::Vector3(lp.x, lp.y, robotmodel->positionmodel->GetGeom().size.z+lp.z));
 
                 if (robotmodel->cameramodels.size() > 1)
-                    tf.sendTransform(tf::StampedTransform(tr, sim_time,
+                    tf.sendTransform(create_transform_stamped(tr, sim_time,
                                                           mapName("base_link", r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
                                                           mapName("camera", r, s, static_cast<Stg::Model*>(robotmodel->positionmodel))));
                 else
-                    tf.sendTransform(tf::StampedTransform(tr, sim_time,
+                    tf.sendTransform(create_transform_stamped(tr, sim_time,
                                                           mapName("base_link", r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
                                                           mapName("camera", r, static_cast<Stg::Model*>(robotmodel->positionmodel))));
 
@@ -771,14 +800,12 @@ main(int argc, char** argv)
     if(sn.SubscribeModels() != 0)
         exit(-1);
 
-    boost::thread t = boost::thread(boost::bind(&ros::spin));
+    std::thread t = std::thread([&sn](){rclcpp::spin(sn.n_);});
 
     sn.world->Start();
 
     Stg::World::Run();
-    
-    t.join();
 
-    exit(0);
+    return 0;
 }
 
