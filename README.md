@@ -22,5 +22,9 @@ colcon build
 ```bash
 cd your_ws/
 . install/setup.bash
+```
+```
+# ros2 run staget_ros stageros (world file Absolute path)
 ros2 run stage_ros stageros src/stage_ros2/world/willow-erratic.world
 ```
+
