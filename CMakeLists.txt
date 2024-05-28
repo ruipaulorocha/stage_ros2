@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(stage_ros)
+project(stage_ros2)
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
@@ -53,6 +53,14 @@ target_link_libraries(stageros
 )
 
 ## Install
+
+install(
+  DIRECTORY
+  world
+  rviz
+  test
+  DESTINATION
+    share/${PROJECT_NAME}/)
 
 install(PROGRAMS scripts/upgrade-world.sh
   DESTINATION lib/${PROJECT_NAME})
