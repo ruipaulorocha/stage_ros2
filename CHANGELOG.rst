@@ -3,6 +3,7 @@ Changelog for package stage_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 1.9.0 (2024-05-28)
+------------------
 * Underwent small modifications to compile and run without errors and warnings in Ubuntu 22.04 LTS OS and ROS2 Humble distro.
 
 1.8.0 (2017-04-30)
