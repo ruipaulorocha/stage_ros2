@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <filesystem>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -53,15 +54,15 @@
 #include <std_srvs/srv/empty.hpp>
 
 #include "tf2/transform_datatypes.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 
-#define USAGE "stageros <worldfile>"
+#define USAGE "stageros WARNING: word file not specified. Usage: stageros <worldfile>"
 #define IMAGE "image"
 #define DEPTH "depth"
 #define CAMERA_INFO "camera_info"
 #define ODOM "odom"
-#define BASE_SCAN "base_scan"
+#define BASE_SCAN "scan"  //"base_scan"
 #define BASE_POSE_GROUND_TRUTH "base_pose_ground_truth"
 #define CMD_VEL "cmd_vel"
 
@@ -138,14 +139,25 @@ private:
 
     // A helper function that is executed for each stage model.  We use it
     // to search for models of interest.
-    static void ghfunc(Stg::Model* mod, StageNode* node);
+    static int ghfunc(Stg::Model* mod, void* node);
+    //static void ghfunc(Stg::Model* mod, StageNode* node);
 
-    static bool s_update(Stg::World* world, StageNode* node)
+    static int s_update(Stg::World* world, void* node)
+    //static bool s_update(Stg::World* world, StageNode* node)
     {
-        node->WorldCallback();
+        Stg::World** dummy = new Stg::World*;
+        *dummy = world;
+        delete dummy;
+        // these 3 lines are just to prevent a compilation warning
+        
+        StageNode* typed_pointer = (StageNode*) node;
+        typed_pointer->WorldCallback();
+        //node->WorldCallback();
+
         // We return false to indicate that we want to be called again (an
         // odd convention, but that's the way that Stage works).
-        return false;
+        return 0;
+        //return false;
     }
 
     // Appends the given robot ID to the given message name.  If omitRobotID
@@ -157,7 +169,8 @@ private:
 
     // Last time that we received a velocity command
     rclcpp::Time base_last_cmd;
-    rclcpp::Duration base_watchdog_timeout{0};
+    rclcpp::Duration base_watchdog_timeout{0, 0};
+    //rclcpp::Duration base_watchdog_timeout{0};
 
     // Current simulation time
     rclcpp::Time sim_time;
@@ -209,11 +222,13 @@ StageNode::mapName(const char *name, size_t robotID, Stg::Model* mod) const
 
         if ((found==std::string::npos) && umn)
         {
-            snprintf(buf, sizeof(buf), "/%s/%s", ((Stg::Ancestor *) mod)->Token(), name);
+            snprintf(buf, sizeof(buf), "%s/%s", ((Stg::Ancestor *) mod)->Token(), name);
+            //snprintf(buf, sizeof(buf), "/%s/%s", ((Stg::Ancestor *) mod)->Token(), name);
         }
         else
         {
-            snprintf(buf, sizeof(buf), "/robot_%u/%s", (unsigned int)robotID, name);
+            snprintf(buf, sizeof(buf), "robot_%u/%s", (unsigned int)robotID, name);
+            //snprintf(buf, sizeof(buf), "/robot_%u/%s", (unsigned int)robotID, name);
         }
 
         return buf;
@@ -252,23 +267,27 @@ StageNode::mapName(const char *name, size_t robotID, size_t deviceID, Stg::Model
     }
 }
 
-void
-StageNode::ghfunc(Stg::Model* mod, StageNode* node)
+int
+StageNode::ghfunc(Stg::Model* mod, void* node)
 {
   //printf( "inspecting %s, parent\n", mod->Token() );
 
+  StageNode* node_typed_pointer = (StageNode*) node;
+
   if (dynamic_cast<Stg::ModelRanger *>(mod)) {
-     node->lasermodels.push_back(dynamic_cast<Stg::ModelRanger *>(mod));
+     node_typed_pointer->lasermodels.push_back(dynamic_cast<Stg::ModelRanger *>(mod));
   }
   if (dynamic_cast<Stg::ModelPosition *>(mod)) {
      Stg::ModelPosition * p = dynamic_cast<Stg::ModelPosition *>(mod);
       // remember initial poses
-      node->positionmodels.push_back(p);
-      node->initial_poses.push_back(p->GetGlobalPose());
+      node_typed_pointer->positionmodels.push_back(p);
+      node_typed_pointer->initial_poses.push_back(p->GetGlobalPose());
     }
   if (dynamic_cast<Stg::ModelCamera *>(mod)) {
-     node->cameramodels.push_back(dynamic_cast<Stg::ModelCamera *>(mod));
+     node_typed_pointer->cameramodels.push_back(dynamic_cast<Stg::ModelCamera *>(mod));
   }
+
+  return 0;
 }
 
 
@@ -277,6 +296,11 @@ StageNode::ghfunc(Stg::Model* mod, StageNode* node)
 bool
 StageNode::cb_reset_srv(const std_srvs::srv::Empty::Request::SharedPtr request, std_srvs::srv::Empty::Response::SharedPtr response)
 {
+  int dummy;
+  if (request) dummy = 1; else dummy = 0;
+  if (response) ++dummy; else --dummy;
+  // these 3 lines are just to prevent a compilation warning
+
   RCLCPP_INFO(this->n_->get_logger(), "Resetting stage!");
   for (size_t r = 0; r < this->positionmodels.size(); r++) {
     this->positionmodels[r]->SetPose(this->initial_poses[r]);
@@ -304,12 +328,62 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
     this->base_last_cmd = rclcpp::Time(0, 0);
     double t;
     rclcpp::Node::SharedPtr localn = rclcpp::Node::make_shared("_");
-    if(!localn->get_parameter("base_watchdog_timeout", t))
+
+    std::string world_file_arg;
+    if (argc > 0) {
+        world_file_arg = fname;
+        RCLCPP_INFO(this->n_->get_logger(), "stageros world file from program arguments: %s", world_file_arg.c_str());
+    }
+    else {
+        world_file_arg = "myworld.world";
+        RCLCPP_INFO(this->n_->get_logger(), "stageros world file from program arguments: (none)");
+    }
+
+    this->n_->set_parameter(rclcpp::Parameter("use_sim_time", true));
+
+    auto param_desc_enable_gui = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc_enable_gui.description = "Enable GUI!";
+    this->n_->declare_parameter<bool>("enable_gui", gui, param_desc_enable_gui);
+    if(!this->n_->get_parameter("enable_gui", gui))
+        RCLCPP_WARN(this->n_->get_logger(),"Cannot get 'enable_gui' ROS parameter! Using default value %s", (gui?"true":"false"));
+    else RCLCPP_INFO(this->n_->get_logger(),"enable_gui = %s", (gui?"true":"false"));
+
+    auto param_desc_watchdog_timeout = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc_watchdog_timeout.description =
+        "timeout after which a vehicle stopps if no command is received!";
+    this->n_->declare_parameter<double>("base_watchdog_timeout", 0.2, param_desc_watchdog_timeout);
+    if(!this->n_->get_parameter("base_watchdog_timeout", t)) {
         t = 0.2;
-    this->base_watchdog_timeout = rclcpp::Duration(t*1e9);
+        RCLCPP_WARN(this->n_->get_logger(),"Cannot get 'base_watchdog_timeout' ROS parameter! Using default value %lf", t);
+    }
+    else RCLCPP_INFO(this->n_->get_logger(),"base_watchdog_timeout = %.3f", t);
+
+    int32_t tsecs = (int32_t) t;
+    uint32_t tnsecs = (uint32_t) ((t - (double) tsecs) * 1e9);
+    this->base_watchdog_timeout = rclcpp::Duration(tsecs, tnsecs);
+    //this->base_watchdog_timeout = rclcpp::Duration(t*1e9);
 
     if(!localn->get_parameter("is_depth_canonical", isDepthCanonical))
         isDepthCanonical = true;
+
+    auto param_desc_world_file = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc_world_file.description = "Path to the world file";
+    this->n_->declare_parameter<std::string>("world_file", world_file_arg, param_desc_world_file);
+
+    std::string world_file;
+    if (!this->n_->get_parameter("world_file", world_file)) {
+        world_file = world_file_arg;
+        RCLCPP_WARN(this->n_->get_logger(),"Cannot get 'world_file' ROS parameter! Using default value %s", world_file.c_str());
+    }
+
+    if (!std::filesystem::exists(world_file)) {
+        RCLCPP_FATAL(
+            this->n_->get_logger(), "The stageros world file %s does not exist.",
+            world_file.c_str());
+        exit(0);
+    }
+    strcpy(argv[argc], world_file.c_str());
+    RCLCPP_INFO(this->n_->get_logger(), "Stageros world file being used: %s", argv[argc]);
 
     // We'll check the existence of the world file, because libstage doesn't
     // expose its failure to open it.  Could go further with checks (e.g., is
@@ -324,7 +398,7 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
     Stg::Init( &argc, &argv );
 
     if(gui)
-        this->world = new Stg::WorldGui(600, 400, "Stage (ROS)");
+        this->world = new Stg::WorldGui(600, 400, "Stage (ROS2)");
     else
         this->world = new Stg::World();
 
@@ -780,7 +854,7 @@ main(int argc, char** argv)
     if( argc < 2 )
     {
         puts(USAGE);
-        exit(-1);
+        //exit(-1);
     }
 
     rclcpp::init(argc, argv);
