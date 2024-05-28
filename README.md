@@ -27,5 +27,5 @@ source .bashrc
 
 ```bash
 # ros2 run stage_ros2 stageros (world file Absolute path)
-ros2 run stage_ros2 stageros ~/your_ws/stage_ros2/share/stage_ros2/world/willow-erratic.world
+ros2 run stage_ros2 stageros ~/your_ws/install/stage_ros2/share/stage_ros2/world/willow-erratic.world
 ```
