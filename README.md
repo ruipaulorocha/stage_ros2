@@ -1,6 +1,6 @@
 # stage_ros2
 Package which contains ROS2 specific hooks and tools for the Stage simulator.
-This version was forked from this [https://github.com/Navifra-Sally/stage_ros2](https://github.com/Navifra-Sally/stage_ros2) and underwent small modifications by [Rui P. Rocha](mailto:rprocha@isr.uc.pt) to be used in ROS2 Humble distro.
+This version was forked from this [https://github.com/Navifra-Sally/stage_ros2](https://github.com/Navifra-Sally/stage_ros2) and underwent small modifications by Rui P. Rocha to be used in ROS2 Humble distro.
   
 ### Requirement
 ```bash
