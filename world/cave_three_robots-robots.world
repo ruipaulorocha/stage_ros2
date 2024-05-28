@@ -1,0 +1,26 @@
+# cave_three_robots-robots.world
+pioneer2dx_with_laser 
+(
+  # can refer to the robot by this name
+  name "robot_0"
+  color "blue" 
+  pose [ -7 -7 0 45 ] 
+)
+
+# throw in a robot
+pioneer2dx_with_laser 
+(
+  # can refer to the robot by this name
+  name "robot_1"
+  color "red" 
+  pose [ -5 -4 0 225 ] 
+)
+
+# throw in a robot
+pioneer2dx_with_laser
+(
+  # can refer to the robot by this name
+  name "robot_2"
+  color "green" 
+  pose [ -5 -6 0 225 ] 
+)

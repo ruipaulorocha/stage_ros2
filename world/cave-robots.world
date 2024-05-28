@@ -1,0 +1,8 @@
+# cave-robots.world
+pioneer2dx_with_laser
+(
+  # can refer to the robot by this name
+  name "robot_0"
+  color "red" 
+  pose [ -7 -7 0 45 ] 
+)
