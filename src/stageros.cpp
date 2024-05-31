@@ -344,19 +344,15 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
     auto param_desc_enable_gui = rcl_interfaces::msg::ParameterDescriptor{};
     param_desc_enable_gui.description = "Enable GUI!";
     this->n_->declare_parameter<bool>("enable_gui", gui, param_desc_enable_gui);
-    if(!this->n_->get_parameter("enable_gui", gui))
-        RCLCPP_WARN(this->n_->get_logger(),"Cannot get 'enable_gui' ROS parameter! Using default value %s", (gui?"true":"false"));
-    else RCLCPP_INFO(this->n_->get_logger(),"enable_gui = %s", (gui?"true":"false"));
+    n_->get_parameter("enable_gui", gui);
+    RCLCPP_INFO(this->n_->get_logger(),"enable_gui = %s", (gui?"true":"false"));
 
     auto param_desc_watchdog_timeout = rcl_interfaces::msg::ParameterDescriptor{};
     param_desc_watchdog_timeout.description =
         "timeout after which a vehicle stopps if no command is received!";
     this->n_->declare_parameter<double>("base_watchdog_timeout", 0.2, param_desc_watchdog_timeout);
-    if(!this->n_->get_parameter("base_watchdog_timeout", t)) {
-        t = 0.2;
-        RCLCPP_WARN(this->n_->get_logger(),"Cannot get 'base_watchdog_timeout' ROS parameter! Using default value %lf", t);
-    }
-    else RCLCPP_INFO(this->n_->get_logger(),"base_watchdog_timeout = %.3f", t);
+    this->n_->get_parameter("base_watchdog_timeout", t);
+    RCLCPP_INFO(this->n_->get_logger(),"base_watchdog_timeout = %.3f", t);
 
     int32_t tsecs = (int32_t) t;
     uint32_t tnsecs = (uint32_t) ((t - (double) tsecs) * 1e9);
@@ -366,16 +362,22 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
     if(!localn->get_parameter("is_depth_canonical", isDepthCanonical))
         isDepthCanonical = true;
 
+    // We'll check the existence of the world file, because libstage doesn't
+    // expose its failure to open it.  Could go further with checks (e.g., is
+    // it readable by this user).
+    struct stat s;
+    if(stat(fname, &s) != 0)
+    {
+        RCLCPP_WARN(this->n_->get_logger(),"The world file %s from program arguments does not exist.", fname);
+    }
+    
     auto param_desc_world_file = rcl_interfaces::msg::ParameterDescriptor{};
     param_desc_world_file.description = "Path to the world file";
     this->n_->declare_parameter<std::string>("world_file", world_file_arg, param_desc_world_file);
 
     std::string world_file;
-    if (!this->n_->get_parameter("world_file", world_file)) {
-        world_file = world_file_arg;
-        RCLCPP_WARN(this->n_->get_logger(),"Cannot get 'world_file' ROS parameter! Using default value %s", world_file.c_str());
-    }
-
+    world_file = world_file_arg;
+    this->n_->get_parameter("world_file", world_file);
     if (!std::filesystem::exists(world_file)) {
         RCLCPP_FATAL(
             this->n_->get_logger(), "The stageros world file %s does not exist.",
@@ -384,15 +386,6 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
     }
     strcpy(argv[argc], world_file.c_str());
     RCLCPP_INFO(this->n_->get_logger(), "Stageros world file being used: %s", argv[argc]);
-
-    // We'll check the existence of the world file, because libstage doesn't
-    // expose its failure to open it.  Could go further with checks (e.g., is
-    // it readable by this user).
-    struct stat s;
-    if(stat(fname, &s) != 0)
-    {
-        RCLCPP_FATAL(this->n_->get_logger(),"The world file %s does not exist.", fname);
-    }
 
     // initialize libstage
     Stg::Init( &argc, &argv );
