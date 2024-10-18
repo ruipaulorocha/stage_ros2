@@ -61,7 +61,7 @@
 #define IMAGE "image"
 #define DEPTH "depth"
 #define CAMERA_INFO "camera_info"
-#define ODOM "odom"
+//#define ODOM "odom"
 #define BASE_SCAN "scan"  //"base_scan"
 #define BASE_POSE_GROUND_TRUTH "base_pose_ground_truth"
 #define CMD_VEL "cmd_vel"
@@ -98,6 +98,9 @@ public:
     rclcpp::Node::SharedPtr n_ = rclcpp::Node::make_shared("stage_ros");
 
 private:
+    // name of odometry topic can be changed -- exposed as a node parameter
+    std::string odom_topic;
+
     // A mutex to lock access to fields that are used in message callbacks
     boost::mutex msg_lock;
 
@@ -341,6 +344,11 @@ StageNode::StageNode(int argc, char** argv, bool gui, const char* fname, bool us
 
     this->n_->set_parameter(rclcpp::Parameter("use_sim_time", true));
 
+    this->n_->declare_parameter<std::string>("odom_topic", "odom");
+    this->n_->get_parameter("odom_topic", odom_topic);
+    RCLCPP_INFO_STREAM(this->n_->get_logger(), "odom_topic = \""
+        << odom_topic << '"');
+
     auto param_desc_enable_gui = rcl_interfaces::msg::ParameterDescriptor{};
     param_desc_enable_gui.description = "Enable GUI!";
     this->n_->declare_parameter<bool>("enable_gui", gui, param_desc_enable_gui);
@@ -452,7 +460,7 @@ StageNode::SubscribeModels()
 		 new_robot->lasermodels.size(),
 		 new_robot->cameramodels.size() );
 
-        new_robot->odom_pub = n_->create_publisher<nav_msgs::msg::Odometry>(mapName(ODOM, r, static_cast<Stg::Model*>(new_robot->positionmodel)), 10);
+        new_robot->odom_pub = n_->create_publisher<nav_msgs::msg::Odometry>(mapName(odom_topic.c_str(), r, static_cast<Stg::Model*>(new_robot->positionmodel)), 10);
         new_robot->ground_truth_pub = n_->create_publisher<nav_msgs::msg::Odometry>(mapName(BASE_POSE_GROUND_TRUTH, r, static_cast<Stg::Model*>(new_robot->positionmodel)), 10);
         new_robot->cmdvel_sub = n_->create_subscription<geometry_msgs::msg::Twist>(mapName(CMD_VEL, r, static_cast<Stg::Model*>(new_robot->positionmodel)), 10, [this, r](const geometry_msgs::msg::Twist::SharedPtr msg) {this->cmdvelReceived(r, msg);});
 
@@ -613,7 +621,7 @@ StageNode::WorldCallback()
         //@todo Publish stall on a separate topic when one becomes available
         //this->odomMsgs[r].stall = this->positionmodels[r]->Stall();
         //
-        odom_msg.header.frame_id = mapName("odom", r, static_cast<Stg::Model*>(robotmodel->positionmodel));
+        odom_msg.header.frame_id = mapName(odom_topic.c_str(), r, static_cast<Stg::Model*>(robotmodel->positionmodel));
         odom_msg.header.stamp = sim_time;
 
         robotmodel->odom_pub->publish(odom_msg);
@@ -626,7 +634,7 @@ StageNode::WorldCallback()
             odom_msg.pose.pose.orientation.w);
         tf2::Transform txOdom(odomQ, tf2::Vector3(odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y, 0.0));
         tf.sendTransform(create_transform_stamped(txOdom, sim_time,
-                                              mapName("odom", r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
+                                              mapName(odom_topic.c_str(), r, static_cast<Stg::Model*>(robotmodel->positionmodel)),
                                               mapName("base_footprint", r, static_cast<Stg::Model*>(robotmodel->positionmodel))));
 
         // Also publish the ground truth pose and velocity
@@ -663,7 +671,7 @@ StageNode::WorldCallback()
         ground_truth_msg.twist.twist.linear.z = gvel.z;
         ground_truth_msg.twist.twist.angular.z = gvel.a;
 
-        ground_truth_msg.header.frame_id = mapName("odom", r, static_cast<Stg::Model*>(robotmodel->positionmodel));
+        ground_truth_msg.header.frame_id = mapName(odom_topic.c_str(), r, static_cast<Stg::Model*>(robotmodel->positionmodel));
         ground_truth_msg.header.stamp = sim_time;
 
         robotmodel->ground_truth_pub->publish(ground_truth_msg);
