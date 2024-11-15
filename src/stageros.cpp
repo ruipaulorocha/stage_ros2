@@ -460,9 +460,9 @@ StageNode::SubscribeModels()
 		 new_robot->lasermodels.size(),
 		 new_robot->cameramodels.size() );
 
-        new_robot->odom_pub = n_->create_publisher<nav_msgs::msg::Odometry>(mapName(odom_topic.c_str(), r, static_cast<Stg::Model*>(new_robot->positionmodel)), 10);
-        new_robot->ground_truth_pub = n_->create_publisher<nav_msgs::msg::Odometry>(mapName(BASE_POSE_GROUND_TRUTH, r, static_cast<Stg::Model*>(new_robot->positionmodel)), 10);
-        new_robot->cmdvel_sub = n_->create_subscription<geometry_msgs::msg::Twist>(mapName(CMD_VEL, r, static_cast<Stg::Model*>(new_robot->positionmodel)), 10, [this, r](const geometry_msgs::msg::Twist::SharedPtr msg) {this->cmdvelReceived(r, msg);});
+        new_robot->odom_pub = n_->create_publisher<nav_msgs::msg::Odometry>(mapName(odom_topic.c_str(), r, static_cast<Stg::Model*>(new_robot->positionmodel)), 1);
+        new_robot->ground_truth_pub = n_->create_publisher<nav_msgs::msg::Odometry>(mapName(BASE_POSE_GROUND_TRUTH, r, static_cast<Stg::Model*>(new_robot->positionmodel)), 1);
+        new_robot->cmdvel_sub = n_->create_subscription<geometry_msgs::msg::Twist>(mapName(CMD_VEL, r, static_cast<Stg::Model*>(new_robot->positionmodel)), 1, [this, r](const geometry_msgs::msg::Twist::SharedPtr msg) {this->cmdvelReceived(r, msg);});
 
         for (size_t s = 0;  s < new_robot->lasermodels.size(); ++s)
         {
